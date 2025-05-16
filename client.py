@@ -8,7 +8,7 @@ import argparse
 
 
 def generate_random_data(size_mb):
-    pairs_count = int(size_mb * 40_000)
+    pairs_count = int(size_mb * 50_000)
     data = {}
     for _ in range(pairs_count):
         key = "".join(random.choices(string.ascii_letters, k=10))
@@ -29,7 +29,7 @@ def send_request(client, url, name, size_mb):
         elapsed = time.time() - start_time
         response_data = response.json()
         print(
-            f"Request '{name}' completed in {elapsed:.6f}s. Server processing time: {response_data['elapsed_server']:.6f}s"
+            f"Request '{name}' ({response_data['request_bytes']} bytes) completed in {elapsed:.6f}s. Server processing time: {response_data['elapsed_server']:.6f}s"
         )
         return response_data
     except Exception as e:
@@ -60,7 +60,7 @@ def main():
         target=periodic_request,
         args=(
             args.url,
-            "small_request",
+            "small",
             args.small_size,
             args.small_interval,
             args.duration,
@@ -70,7 +70,7 @@ def main():
         target=periodic_request,
         args=(
             args.url,
-            "large_request",
+            "large",
             args.large_size,
             args.large_interval,
             args.duration,

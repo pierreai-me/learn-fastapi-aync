@@ -24,6 +24,7 @@ class MyReturnValue(BaseModel):
     maxval: int
     elapsed_server: float  # Time in seconds
     elapsed_from_client: float  # Time in seconds
+    request_bytes: int
 
 
 @app.middleware("http")
@@ -33,9 +34,22 @@ async def add_process_time_header(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def capture_request_size(request: Request, call_next):
+    body = await request.body()
+    request.state.request_bytes = len(body)
+    new_request = Request(
+        scope=request.scope,
+        receive=request._receive,
+        send=request._send,
+    )
+    response = await call_next(new_request)
+    return response
+
 @app.post("/ping")
 async def ping(param: MyParam, request: Request):
     start_time = request.state.start_time
+    request_bytes = request.state.request_bytes
 
     count = len(param.data)
     maxval = max(param.data.values()) if param.data else 0
@@ -49,6 +63,7 @@ async def ping(param: MyParam, request: Request):
         maxval=maxval,
         elapsed_server=elapsed_server,
         elapsed_from_client=elapsed_from_client,
+        request_bytes=request_bytes,
     )
 
     logger.info(
