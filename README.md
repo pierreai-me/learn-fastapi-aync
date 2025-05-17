@@ -8,7 +8,12 @@ Send the contents of prompt.md to Claude 3.7 w/ extended thinking.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install fastapi uvicorn httpx pydantic gunicorn
+pip install fastapi uvicorn httpx pydantic gunicorn orjson ijson
+sudo apt-get update
+sudo apt-get install -y libyajl2 libyajl-dev
+pip install --no-build-isolation yajl-py
+pip install --force-reinstall ijson
+pip install "ijson[yajl2_cffi]==3.3.0"
 
 # shell 1 - run one of the following commands
 # single worker
