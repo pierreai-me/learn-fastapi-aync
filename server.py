@@ -5,7 +5,7 @@ import time
 import logging
 
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", force=True
+    level=logging.INFO, format="%(asctime)s - [PID %(process)d] - %(levelname)s - %(message)s", force=True
 )
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,8 @@ class MyReturnValue(BaseModel):
     name: str
     count: int
     maxval: int
-    elapsed_server: float  # Time in seconds
-    elapsed_from_client: float  # Time in seconds
+    elapsed_server: int  # Time in ms
+    elapsed_from_client: int  # Time in ms
     request_bytes: int
 
 
@@ -61,8 +61,8 @@ async def ping(param: MyParam, request: Request):
         name=param.name,
         count=count,
         maxval=maxval,
-        elapsed_server=elapsed_server,
-        elapsed_from_client=elapsed_from_client,
+        elapsed_server=int(1000*elapsed_server),
+        elapsed_from_client=int(1000*elapsed_from_client),
         request_bytes=request_bytes,
     )
 

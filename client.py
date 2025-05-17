@@ -17,7 +17,7 @@ def generate_random_data(size_mb):
     return data
 
 
-def send_request(client, url, name, size_mb):
+def send_request(url, name, size_mb):
     data = generate_random_data(size_mb)
     timestamp = datetime.datetime.now()
 
@@ -25,11 +25,12 @@ def send_request(client, url, name, size_mb):
 
     start_time = time.time()
     try:
-        response = client.post(url, json=payload)
+        with httpx.Client(timeout=120.0) as client:
+            response = client.post(url, json=payload)
         elapsed = time.time() - start_time
         response_data = response.json()
         print(
-            f"Request '{name}' ({response_data['request_bytes']} bytes) completed in {elapsed:.6f}s. Server processing time: {response_data['elapsed_server']:.6f}s"
+            f"Request '{name}' ({response_data['request_bytes']} bytes) completed in {elapsed:.6f}s"
         )
         return response_data
     except Exception as e:
@@ -39,10 +40,9 @@ def send_request(client, url, name, size_mb):
 
 def periodic_request(url, name, size_mb, interval, duration):
     end_time = time.time() + duration
-    with httpx.Client(timeout=120.0) as client:
-        while time.time() < end_time:
-            send_request(client, url, name, size_mb)
-            time.sleep(interval)
+    while time.time() < end_time:
+        send_request(url, name, size_mb)
+        time.sleep(interval)
 
 
 def main():
