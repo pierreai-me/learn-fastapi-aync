@@ -3,12 +3,7 @@ from pydantic import BaseModel
 from io import BytesIO
 import time
 import logging
-import json
-import ijson
-from ijson.common import ObjectBuilder
 import orjson
-import asyncio
-from ijson.backends.yajl2_cffi import parse as yajl_parse
 from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(
@@ -45,22 +40,16 @@ async def add_process_time_header(request: Request, call_next):
 @app.middleware("http")
 async def capture_request_size(request: Request, call_next):
     request.state.request_bytes = 0
+
     async def receive_wrapper():
         message = await request._receive()
         if message["type"] == "http.request":
             request.state.request_bytes += len(message.get("body", b""))
         return message
+
     request = Request(request.scope, receive_wrapper, request._send)
     response = await call_next(request)
     return response
-
-
-def process_param(buffer, x_request_id):
-    logger.info(f"{x_request_id:13} | process_param start")
-    data_dict = orjson.loads(buffer.getvalue().decode("utf-8"))
-    param = MyParam(**data_dict)
-    logger.info(f"{x_request_id:13} | process_param end")
-    return param
 
 
 def process_request(param, request, endpoint):
@@ -99,27 +88,18 @@ async def ping(param: MyParam, request: Request):
 async def pong(request: Request):
     x_request_id = request.headers.get("x-request-id", "unknown")
     logger.info(f"{x_request_id:13} | begin /pong")
-    n = 0
 
-    # Collect chunks first
-    chunks = bytearray()
+    chunks = BytesIO()
     n = 0
     async for chunk in request.stream():
         n += 1
-        chunks.extend(chunk)
+        chunks.write(chunk)
     logger.info(f"{x_request_id:13} | num chunks {n}")
 
-    # Process using ijson in thread pool
-    def parse_json():
-        from ijson import items
-        # Get the root object from the JSON
-        data = list(items(bytes(chunks), ''))[0]
-        return data
+    data_dict = orjson.loads(chunks.getvalue().decode("utf-8"))
+    logger.info(f"{x_request_id:13} | loaded json")
 
-    # Run parser in thread pool
-    data = await asyncio.to_thread(parse_json)
-    logger.info(f"{x_request_id:13} | data")
+    param = MyParam(**data_dict)
+    logger.info(f"{x_request_id:13} | created param")
 
-    param = MyParam(**data)
-    logger.info(f"{x_request_id:13} | param")
     return process_request(param, request, "/pong")

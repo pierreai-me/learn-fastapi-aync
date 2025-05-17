@@ -4,6 +4,7 @@ import random
 import string
 import threading
 import argparse
+import numpy as np
 
 
 def generate_random_data(size_mb):
@@ -14,6 +15,10 @@ def generate_random_data(size_mb):
         value = random.randint(1, 1_000_000)
         data[key] = value
     return data
+
+
+# Shared data structure to store elapsed times
+request_times = {"small": [], "large": []}
 
 
 def send_request(base_url, endpoint, name, size_mb, request_counter):
@@ -29,8 +34,10 @@ def send_request(base_url, endpoint, name, size_mb, request_counter):
     start_time = time.time()
     with httpx.Client(timeout=120.0) as client:
         response = client.post(url, json=payload, headers=headers)
-    elapsed_time_ms = int(1000 * (time.time() - start_time))
     response.raise_for_status()
+    elapsed_time_ms = int(1000 * (time.time() - start_time))
+    request_times[name].append(elapsed_time_ms)
+
     response_data = response.json()
     print(
         f"{request_id:13} | {endpoint:6} | {response_data['request_bytes']} bytes completed in {elapsed_time_ms} ms, data generation {generation_time_ms} ms"
@@ -47,6 +54,22 @@ def periodic_request(base_url, endpoint, name, size_mb, interval, duration):
         time.sleep(interval)
 
 
+def calculate_statistics(times):
+    if not times:
+        return {"count": 0}
+    times_array = np.array(times)
+    return {
+        "count": len(times_array),
+        "min": int(float(np.min(times_array))),
+        "median": int(float(np.median(times_array))),
+        "mean": int(float(np.mean(times_array))),
+        "p90": int(float(np.percentile(times_array, 90))),
+        "p95": int(float(np.percentile(times_array, 95))),
+        "p99": int(float(np.percentile(times_array, 99))),
+        "max": int(float(np.max(times_array))),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="FastAPI client for CPU load testing")
     parser.add_argument("--base-url", type=str, default="http://localhost:8000")
@@ -60,6 +83,8 @@ def main():
     parser.add_argument("--duration", type=int, default=60)
 
     args = parser.parse_args()
+
+    print(f"Running tests for {args.duration} seconds on {args.endpoint}...")
 
     small_thread = threading.Thread(
         target=periodic_request,
@@ -91,6 +116,11 @@ def main():
     large_thread.join()
 
     print("All requests completed.")
+
+    all_stats = {
+        name: calculate_statistics(request_times[name]) for name in ("small", "large")
+    }
+    print(all_stats)
 
 
 if __name__ == "__main__":
