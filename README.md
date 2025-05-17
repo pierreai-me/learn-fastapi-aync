@@ -109,3 +109,7 @@ For instance here's /pong spends most of the time processing a large request:
 ```
 
 i.e. parsing a JSON-encoded string and creating a BaseModel object.
+
+Also:
+- Discuss with teams to avoid large requests in the short term
+- Collect statistics on request size per user
