@@ -5,7 +5,9 @@ import time
 import logging
 
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - [PID %(process)d] - %(levelname)s - %(message)s", force=True
+    level=logging.INFO,
+    format="%(asctime)s - [PID %(process)d] - %(levelname)s - %(message)s",
+    force=True,
 )
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,7 @@ async def capture_request_size(request: Request, call_next):
     response = await call_next(new_request)
     return response
 
+
 @app.post("/ping")
 async def ping(param: MyParam, request: Request):
     start_time = request.state.start_time
@@ -61,8 +64,8 @@ async def ping(param: MyParam, request: Request):
         name=param.name,
         count=count,
         maxval=maxval,
-        elapsed_server=int(1000*elapsed_server),
-        elapsed_from_client=int(1000*elapsed_from_client),
+        elapsed_server=int(1000 * elapsed_server),
+        elapsed_from_client=int(1000 * elapsed_from_client),
         request_bytes=request_bytes,
     )
 
