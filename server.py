@@ -5,6 +5,8 @@ import time
 import logging
 import orjson
 from concurrent.futures import ThreadPoolExecutor
+import time
+from contextlib import contextmanager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,6 +17,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 app = FastAPI()
 thread_pool = ThreadPoolExecutor(max_workers=10)
+
+
+class Profiler:
+    def __init__(self):
+        self.timings = {}
+        self._index = 0
+
+    @contextmanager
+    def measure(self, name):
+        start = time.perf_counter()
+        try:
+            yield
+        finally:
+            self._index += 1
+            indexed_name = f"{self._index:03d}_{name}"
+            self.timings[indexed_name] = int(1000 * (time.perf_counter() - start))
 
 
 class MyParam(BaseModel):
@@ -70,28 +88,25 @@ async def ping(param: MyParam, request: Request):
 @app.post("/pong")
 async def pong(request: Request):
     x_request_id = request.headers.get("x-request-id", "unknown")
-    start_time = request.state.start_time
     profiling = {}
     logger.info(f"{x_request_id:13} | begin /pong")
 
-    chunks = BytesIO()
-    n = 0
-    async for chunk in request.stream():
-        n += 1
-        chunks.write(chunk)
-    chunks_time = time.time()
-    profiling["01_read_chunks"] = int(1000 * (chunks_time - start_time))
+    profiler = Profiler()
 
-    s = chunks.getvalue().decode("utf-8")
-    string_time = time.time()
-    profiling["02_string_conversion"] = int(1000 * (string_time - chunks_time))
+    with profiler.measure("read_chunks"):
+        chunks = BytesIO()
+        n = 0
+        async for chunk in request.stream():
+            n += 1
+            chunks.write(chunk)
 
-    data_dict = orjson.loads(s)
-    json_time = time.time()
-    profiling["03_json_parsing"] = int(1000 * (json_time - string_time))
+    with profiler.measure("string_conversion"):
+        s = chunks.getvalue().decode("utf-8")
 
-    param = MyParam(**data_dict)
-    param_time = time.time()
-    profiling["04_param_creation"] = int(1000 * (param_time - json_time))
+    with profiler.measure("json_parsing"):
+        data_dict = orjson.loads(s)
 
-    return process_request(param, request, "/pong", profiling)
+    with profiler.measure("param_creation"):
+        param = MyParam(**data_dict)
+
+    return process_request(param, request, "/pong", profiler.timings)
