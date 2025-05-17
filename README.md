@@ -71,3 +71,32 @@ The two endpoints are:
     'large': {'count': 31, 'min': 691, 'median': 745, 'mean': 749, 'p90': 788, 'p95': 799, 'p99': 801, 'max': 802}
 }
 ```
+
+## Discussion
+
+The problems we're facing are:
+1. When a coroutine performs CPU-heavy computations w/o any `await` statement, it does not release the single-threaded event loop. **All requests are blocked during that time.**
+2. Python has a GIL (Global Interpreter Lock). Some libraries like `json` only infrequently release the GIL. Even when running multiple threads, if a thread doesn't release the GIL, other threads can't run.
+    - Since 3.13 there's work to remove it but it's currently an [optional build](https://docs.python.org/3/howto/free-threading-python.html)
+3. Very large requests (>1MB) incur signficant processing costs:
+    - Conversions between bytes and strings
+    - Creation of primitive types through JSON loading
+    - Creation of user defined types (e.g. BaseModel)
+    - Logging of such objects
+
+Discussion of possible solutions:
+- Define FastAPI endpoints as synchronous vs asynchronous (i.e. drop the `async def` in favor of `def`).
+  This forces FastAPI to allocate a pool of about 40 threads for the application, instead of an asynchronous event loop.
+  This would solve the first issue (no longer holding an event loop for extended periods of time).
+  However the second issue is still there (no releasing the GIL).
+- Use more BPaaS pods.
+  Most small requests are no longer delayed by large requests.
+  However some small requests may still be impacted, depending on how request routing (load balancing) is implemented by BPaaS.
+- Use multiple workers, as we have done here.
+  Small requests are no longer delayed by large requests.
+  We need to check how keep alive connections are handled.
+  If client A and B always use the same worker, and client A sends a large request, client B will be impacted.
+  There are ways to prevent keep alive connections server-side.
+  The question is what will be the penalty for clients that want to reuse their connections.
+
+In effect there are two categories of problems: small requests being starved, and large requests taking a long time to complete. The previous solutions try to address starvation. To help large requests take a shorter amount of time to complete, we need to instrument or profile our code, clarify which use cases we want to support or not, and work on things like using faster JSON parsers, stop logging very long strings, etc., based on the results of that profiling.
