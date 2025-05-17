@@ -40,7 +40,7 @@ def send_request(base_url, endpoint, name, size_mb, request_counter):
 
     response_data = response.json()
     print(
-        f"{request_id:13} | {endpoint:6} | {response_data['request_bytes']} bytes completed in {elapsed_time_ms} ms, data generation {generation_time_ms} ms"
+        f"{request_id:13} | {endpoint:6} | in {elapsed_time_ms} ms, data generation {generation_time_ms} ms | {response_data}"
     )
     return response_data
 

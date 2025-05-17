@@ -26,8 +26,8 @@ class MyReturnValue(BaseModel):
     name: str
     count: int
     maxval: int
-    elapsed_server: int  # Time in ms
-    request_bytes: int
+    elapsed_server: int  # Total time in ms
+    profiling: dict[str, int]  # Granular timings in ms
 
 
 @app.middleware("http")
@@ -37,27 +37,9 @@ async def add_process_time_header(request: Request, call_next):
     return response
 
 
-@app.middleware("http")
-async def capture_request_size(request: Request, call_next):
-    request.state.request_bytes = 0
-
-    async def receive_wrapper():
-        message = await request._receive()
-        if message["type"] == "http.request":
-            request.state.request_bytes += len(message.get("body", b""))
-        return message
-
-    request = Request(request.scope, receive_wrapper, request._send)
-    response = await call_next(request)
-    return response
-
-
-def process_request(param, request, endpoint):
+def process_request(param, request, endpoint, profiling):
     x_request_id = request.headers.get("x-request-id", "unknown")
-    logger.info(f"{x_request_id:13} | process_request start")
-
     start_time = request.state.start_time
-    request_bytes = request.state.request_bytes
 
     count = len(param.data)
     maxval = max(param.data.values()) if param.data else 0
@@ -69,7 +51,7 @@ def process_request(param, request, endpoint):
         count=count,
         maxval=maxval,
         elapsed_server=int(1000 * elapsed_server),
-        request_bytes=request_bytes,
+        profiling=profiling,
     )
 
     logger.info(
@@ -81,12 +63,15 @@ def process_request(param, request, endpoint):
 
 @app.post("/ping")
 async def ping(param: MyParam, request: Request):
-    return process_request(param, request, "/ping")
+    profiling = {}
+    return process_request(param, request, "/ping", profiling)
 
 
 @app.post("/pong")
 async def pong(request: Request):
     x_request_id = request.headers.get("x-request-id", "unknown")
+    start_time = request.state.start_time
+    profiling = {}
     logger.info(f"{x_request_id:13} | begin /pong")
 
     chunks = BytesIO()
@@ -94,12 +79,19 @@ async def pong(request: Request):
     async for chunk in request.stream():
         n += 1
         chunks.write(chunk)
-    logger.info(f"{x_request_id:13} | num chunks {n}")
+    chunks_time = time.time()
+    profiling["01_read_chunks"] = int(1000 * (chunks_time - start_time))
 
-    data_dict = orjson.loads(chunks.getvalue().decode("utf-8"))
-    logger.info(f"{x_request_id:13} | loaded json")
+    s = chunks.getvalue().decode("utf-8")
+    string_time = time.time()
+    profiling["02_string_conversion"] = int(1000 * (string_time - chunks_time))
+
+    data_dict = orjson.loads(s)
+    json_time = time.time()
+    profiling["03_json_parsing"] = int(1000 * (json_time - string_time))
 
     param = MyParam(**data_dict)
-    logger.info(f"{x_request_id:13} | created param")
+    param_time = time.time()
+    profiling["04_param_creation"] = int(1000 * (param_time - json_time))
 
-    return process_request(param, request, "/pong")
+    return process_request(param, request, "/pong", profiling)

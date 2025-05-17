@@ -85,18 +85,27 @@ The problems we're facing are:
     - Logging of such objects
 
 Discussion of possible solutions:
-- Define FastAPI endpoints as synchronous vs asynchronous (i.e. drop the `async def` in favor of `def`).
-  This forces FastAPI to allocate a pool of about 40 threads for the application, instead of an asynchronous event loop.
+- Define FastAPI endpoints as synchronous instead of asynchronous (i.e. drop the `async def` in favor of `def`).
+  This forces FastAPI to allocate a pool of about 40 threads to the application.
+  No event loops are used.
   This would solve the first issue (no longer holding an event loop for extended periods of time).
-  However the second issue is still there (no releasing the GIL).
+  However the second issue is still there (not releasing the GIL).
 - Use more BPaaS pods.
-  Most small requests are no longer delayed by large requests.
-  However some small requests may still be impacted, depending on how request routing (load balancing) is implemented by BPaaS.
+  Most small requests would no longer be delayed by large requests.
+  However some small requests may still be impacted, depending on how BPaaS routes requests (balances the load) among all the pods.
 - Use multiple workers, as we have done here.
   Small requests are no longer delayed by large requests.
   We need to check how keep alive connections are handled.
-  If client A and B always use the same worker, and client A sends a large request, client B will be impacted.
-  There are ways to prevent keep alive connections server-side.
-  The question is what will be the penalty for clients that want to reuse their connections.
+  If clients A and B always use the same worker, and client A sends a large request, client B will be impacted.
+  There are ways to disallow keep alive connections from the server side.
+  The question is - what is the latency penalty for clients?
 
 In effect there are two categories of problems: small requests being starved, and large requests taking a long time to complete. The previous solutions try to address starvation. To help large requests take a shorter amount of time to complete, we need to instrument or profile our code, clarify which use cases we want to support or not, and work on things like using faster JSON parsers, stop logging very long strings, etc., based on the results of that profiling.
+
+For instance here's /pong spends most of the time processing a large request:
+
+```text
+{'01_read_chunks': 19, '02_string_conversion': 10, '03_json_parsing': 252, '04_param_creation': 153}
+```
+
+i.e. parsing a JSON-encoded string and creating a BaseModel object.
